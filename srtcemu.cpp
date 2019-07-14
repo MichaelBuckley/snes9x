@@ -3,6 +3,8 @@
  * Copyright (c) byuu
  *****/
 
+#include "snes9x.h"
+#include "srtcemu.h"
 
 #define _SRTCEMU_CPP_
 
