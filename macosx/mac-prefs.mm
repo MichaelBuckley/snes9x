@@ -195,12 +195,6 @@ static PrefList	prefList[] =
 	{ 'NPNM', npName,										sizeof(npName     ) },
 
 	{ 'L239', &lastoverscan,								sizeof(bool8      ) },
-
-	{ 'ExT1', &(extraOptions.benchmark),					sizeof(bool8      ) },
-	{ 'ExT2', &(extraOptions.glForceNoTextureRectangle),	sizeof(bool8      ) },
-	{ 'ExT3', &(extraOptions.glUseClientStrageApple),		sizeof(bool8      ) },
-	{ 'ExT4', &(extraOptions.glUseTexturePriority),			sizeof(bool8      ) },
-	{ 'ExT5', &(extraOptions.glStorageHint),				sizeof(int        ) }
 };
 
 #define	kPrefListSize	(sizeof(prefList) / sizeof(prefList[0]))

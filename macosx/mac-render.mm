@@ -47,15 +47,14 @@ static void S9xInitFullScreen (void);
 static void S9xDeinitFullScreen (void);
 static void S9xInitWindowMode (void);
 static void S9xDeinitWindowMode (void);
-static void S9xInitOpenGL (void);
+static void S9xInitMetal (void);
 static void S9xDeinitOpenGL(void);
 static void S9xInitBlitGL (void);
 static void S9xDeinitBlitGL (void);
-static void S9xInitOpenGLContext (void);
 static void S9xDeinitOpenGLContext (void);
 static void S9xInitCoreImage (void);
 static void S9xDeinitCoreImage (void);
-static void S9xPutImageOpenGL (int, int);
+static void S9xPutImageMetal (int, int);
 static void S9xPutImageBlitGL (int, int);
 static void S9xPutImageBlitGL2 (int, int);
 static void GLMakeScreenMesh (GLfloat *, int, int);
@@ -144,8 +143,6 @@ static MPQueueID			notificationQueue = NULL,
 							taskQueue         = NULL;
 static MPSemaphoreID		readySemaphore    = NULL;
 static MPData				*mpBlit           = NULL;
-
-static OpenGLData			OpenGL;
 
 static CGImageRef			cgGameImage       = NULL,
 							cgBlitImage       = NULL;
@@ -238,51 +235,6 @@ void DeinitGraphics (void)
 	}
 }
 
-void DrawPauseScreen (CGContextRef ctx, HIRect bounds)
-{
-	CGImageRef	image;
-	CGRect		rct;
-	float		sh, mh, rofs, ry;
-
-	if ((IPPU.RenderedScreenWidth == 0) || (IPPU.RenderedScreenHeight == 0))
-		return;
-
-	sh = (float) ((IPPU.RenderedScreenHeight > 256) ? IPPU.RenderedScreenHeight : IPPU.RenderedScreenHeight * 2);
-	mh = (float) (SNES_HEIGHT_EXTENDED * 2);
-
-	if (drawoverscan)
-	{
-		rofs = (mh - sh) / mh;
-		ry   = sh / mh;
-	}
-	else
-	if (windowExtend)
-	{
-		rofs = (mh - sh) / mh / 2.0f;
-		ry   = sh / mh;
-	}
-	else
-	{
-		rofs = 0.0f;
-		ry   = 1.0f;
-	}
-
-	image = CreateGameScreenCGImage();
-	if (image)
-	{
-		CGContextSetRGBFillColor(ctx, 0.0f, 0.0f, 0.0f, 1.0f);
-		CGContextFillRect(ctx, bounds);
-
-		rct = CGRectMake(0.0f, bounds.size.height * rofs, bounds.size.width, bounds.size.height * ry);
-		CGContextDrawImage(ctx, rct, image);
-
-		CGContextSetRGBFillColor(ctx, 0.0f, 0.0f, 0.0f, 0.5f);
-		CGContextFillRect(ctx, bounds);
-
-		CGImageRelease(image);
-	}
-}
-
 void DrawFreezeDefrostScreen (uint8 *draw)
 {
 	const int	w = SNES_WIDTH << 1, h = SNES_HEIGHT << 1;
@@ -291,7 +243,7 @@ void DrawFreezeDefrostScreen (uint8 *draw)
 	imageWidth[1] = imageHeight[1] = 0;
 	prevBlitWidth = prevBlitHeight = 0;
 
-	if (nx < 0 && !ciFilterEnable)
+	if (nx < 0)
 	{
 		for (int y = 0; y < h; y++)
 			memcpy(blitGLBuffer + y * 1024 * 2, draw + y * w * 2, w * 2);
@@ -300,31 +252,6 @@ void DrawFreezeDefrostScreen (uint8 *draw)
 		memcpy(blitGLBuffer, draw, w * h * 2);
 
 	S9xPutImageBlitGL2(w, h);
-}
-
-void ClearGFXScreen (void)
-{
-	memset(gfxScreen[0], 0,  512 *  512 * 2);
-	memset(gfxScreen[1], 0,  512 *  512 * 2);
-	memset(blitGLBuffer, 0, 1024 * 1024 * 2);
-
-	S9xBlitClearDelta();
-
-	imageWidth[0] = imageHeight[0] = 0;
-	imageWidth[1] = imageHeight[1] = 0;
-	prevBlitWidth = prevBlitHeight = 0;
-
-    CGLSetCurrentContext(s9xView.openGLContext.CGLContextObj);
-    glViewport(0, 0, glScreenW, glScreenH);
-
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-	for (int i = 0; i < 2; i++)
-	{
-		glClear(GL_COLOR_BUFFER_BIT);
-        glSwapAPPLE();
-        //CGLFlushDrawable(s9xView.openGLContext.CGLContextObj);
-	}
 }
 
 static void S9xInitFullScreen (void)
@@ -347,16 +274,17 @@ static void S9xDeinitWindowMode (void)
 {
 }
 
-static void S9xInitOpenGL (void)
-{
-    GLint glSwapInterval = vsync ? 1 : 0;
-    if (extraOptions.benchmark)
-        glSwapInterval = 0;
-    CGLSetParameter(s9xView.openGLContext.CGLContextObj, kCGLCPSwapInterval, &glSwapInterval);
-    CGLSetCurrentContext(s9xView.openGLContext.CGLContextObj);
+CAMetalLayer    *metalLayer = nil;
+id<MTLDevice>   metalDevice = nil;
+id<MTLTexture>  metalTexture = nil;
 
+static void S9xInitMetal (void)
+{
     glScreenW = glScreenBounds.size.width;
     glScreenH = glScreenBounds.size.height;
+
+    metalLayer = (CAMetalLayer *)s9xView.layer;
+    metalDevice = s9xView.device;
 }
 
 static void S9xDeinitOpenGL (void)
@@ -374,35 +302,6 @@ static void S9xDeinitBlitGL (void)
 
 static void GLPrepareTexture (bool8 useRange, int texNo, int rangeOnW, int rangeOnH, int rangeOffW, int rangeOffH, int filter)
 {
-	bool8	rangeAvailable = OpenGL.rangeExt & useRange;
-
-	OpenGL.texW[texNo] = rangeAvailable ? rangeOnW : rangeOffW;
-	OpenGL.texH[texNo] = rangeAvailable ? rangeOnH : rangeOffH;
-
-	OpenGL.vertex[texNo][0] = 0;
-	OpenGL.vertex[texNo][1] = 0;
-	OpenGL.vertex[texNo][2] = rangeAvailable ? rangeOnW : 1;
-	OpenGL.vertex[texNo][3] = 0;
-	OpenGL.vertex[texNo][4] = rangeAvailable ? rangeOnW : 1;
-	OpenGL.vertex[texNo][5] = rangeAvailable ? rangeOnH : 1;
-	OpenGL.vertex[texNo][6] = 0;
-	OpenGL.vertex[texNo][7] = rangeAvailable ? rangeOnH : 1;
-
-	glBindTexture(OpenGL.target, OpenGL.textures[texNo]);
-
-	if (rangeAvailable)
-	{
-		glTextureRangeAPPLE(OpenGL.target, OpenGL.texW[texNo] * OpenGL.texH[texNo] * 2, GFX.Screen);
-		glTexParameteri(OpenGL.target, GL_TEXTURE_STORAGE_HINT_APPLE, OpenGL.storage_hint);
-	}
-
-	glTexParameterf(OpenGL.target, GL_TEXTURE_PRIORITY, OpenGL.agp_texturing);
-	glTexParameteri(OpenGL.target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(OpenGL.target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(OpenGL.target, GL_TEXTURE_MAG_FILTER, filter);
-	glTexParameteri(OpenGL.target, GL_TEXTURE_MIN_FILTER, filter);
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	glTexImage2D(OpenGL.target, 0, OpenGL.internal_format, OpenGL.texW[texNo], OpenGL.texH[texNo], 0, OpenGL.format, OpenGL.type, GFX.Screen);
 }
 
 static void GLMakeScreenMesh (GLfloat *vertex3D, int meshx, int meshy)
@@ -459,160 +358,8 @@ static void GLMakeTextureMesh (GLfloat *vertex2D, int meshx, int meshy, float lx
 	}
 }
 
-static void S9xInitOpenGLContext (void)
-{
-	OpenGL.internal_format = GL_RGB5_A1;
-    OpenGL.format          = GL_BGRA;
-    OpenGL.type            = GL_UNSIGNED_SHORT_1_5_5_5_REV;
-	OpenGL.rangeExt        = gluCheckExtension((const GLubyte *) "GL_APPLE_texture_range", glGetString(GL_EXTENSIONS));
-	OpenGL.target          = OpenGL.rangeExt ? GL_TEXTURE_RECTANGLE_EXT : GL_TEXTURE_2D;
-
-	OpenGL.storage_apple   = extraOptions.glUseClientStrageApple ? 1    : 0;
-	OpenGL.agp_texturing   = extraOptions.glUseTexturePriority   ? 0.0f : 1.0f;
-	switch (extraOptions.glStorageHint)
-	{
-		case 1:	OpenGL.storage_hint = GL_STORAGE_PRIVATE_APPLE;	break;
-		case 2:	OpenGL.storage_hint = GL_STORAGE_CACHED_APPLE;	break;
-		case 3:	OpenGL.storage_hint = GL_STORAGE_SHARED_APPLE;	break;
-	}
-
-	if (screencurvature || videoMode >= VIDEOMODE_NTSC_C || extraOptions.glForceNoTextureRectangle)
-	{
-		OpenGL.rangeExt = false;
-		OpenGL.target   = GL_TEXTURE_2D;
-	}
-
-	printf("TextureRange: %s\n", OpenGL.rangeExt ? "enable" : "disable");
-
-	glDisable(GL_BLEND);
-	glDisable(GL_DITHER);
-	glDisable(GL_LIGHTING);
-	glDisable(GL_DEPTH_TEST);
-
-	glEnable(GL_CULL_FACE);
-	glPolygonMode(GL_FRONT, GL_FILL);
-	glCullFace(GL_BACK);
-
-	glDisable(GL_TEXTURE_2D);
-	glDisable(GL_TEXTURE_RECTANGLE_EXT);
-	glEnable(OpenGL.target);
-
-	glGenTextures(kGLNumTextures, OpenGL.textures);
-
-	glPixelStorei(GL_UNPACK_CLIENT_STORAGE_APPLE, OpenGL.storage_apple);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 8);
-
-	int	filter = (videoMode == VIDEOMODE_SMOOTH) ? GL_LINEAR : GL_NEAREST;
-	GLPrepareTexture(true,  kGL256256, SNES_WIDTH,     SNES_HEIGHT_EXTENDED,      256,  256, filter);
-	GLPrepareTexture(true,  kGL256512, SNES_WIDTH,     SNES_HEIGHT_EXTENDED * 2,  256,  512, filter);
-	GLPrepareTexture(true,  kGL512256, SNES_WIDTH * 2, SNES_HEIGHT_EXTENDED,      512,  256, filter);
-	GLPrepareTexture(true,  kGL512512, SNES_WIDTH * 2, SNES_HEIGHT_EXTENDED * 2,  512,  512, filter);
-	GLPrepareTexture(true,  kGLBlit2x, SNES_WIDTH * 2, SNES_HEIGHT_EXTENDED * 2,  512,  512, GL_LINEAR);
-	GLPrepareTexture(true,  kGLBlit3x, SNES_WIDTH * 3, SNES_HEIGHT_EXTENDED * 3, 1024, 1024, GL_LINEAR);
-	GLPrepareTexture(true,  kGLBlit4x, SNES_WIDTH * 4, SNES_HEIGHT_EXTENDED * 4, 1024, 1024, GL_LINEAR);
-	GLPrepareTexture(false, kGLNTS256, 1024,           256,                      1024,  256, GL_LINEAR);
-	GLPrepareTexture(false, kGLNTS512, 1024,           512,                      1024,  512, GL_LINEAR);
-
-	if (!screencurvature)
-	{
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-
-		glDisableClientState(GL_VERTEX_ARRAY);
-		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-	}
-	else
-	{
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		glFrustum(-1.0, 1.0, -1.0, 1.0, 0.95, 5.0);
-
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-		int	mesh = (kSCMeshX + 1) * 2 * kSCMeshY * 2;
-		scTexArray[kSC2xNormal] = new GLfloat [mesh];
-		scTexArray[kSC2xExtend] = new GLfloat [mesh];
-		scTexArray[kSC2xNHiRes] = new GLfloat [mesh];
-		scTexArray[kSC2xEHiRes] = new GLfloat [mesh];
-		scTexArray[kSC2xNInter] = new GLfloat [mesh];
-		scTexArray[kSC2xEInter] = new GLfloat [mesh];
-		scTexArray[kSC3xNormal] = new GLfloat [mesh];
-		scTexArray[kSC3xExtend] = new GLfloat [mesh];
-		scTexArray[kSC3xNHiRes] = new GLfloat [mesh];
-		scTexArray[kSC3xEHiRes] = new GLfloat [mesh];
-		scTexArray[kSCNTNormal] = new GLfloat [mesh];
-		scTexArray[kSCNTExtend] = new GLfloat [mesh];
-
-		GLMakeTextureMesh(scTexArray[kSC2xNormal], kSCMeshX, kSCMeshY,                         1.0f, 224.0f /  256.0f);
-		GLMakeTextureMesh(scTexArray[kSC2xExtend], kSCMeshX, kSCMeshY,                         1.0f, 239.0f /  256.0f);
-		GLMakeTextureMesh(scTexArray[kSC2xNHiRes], kSCMeshX, kSCMeshY,                         1.0f, 224.0f /  512.0f);
-		GLMakeTextureMesh(scTexArray[kSC2xEHiRes], kSCMeshX, kSCMeshY,                         1.0f, 239.0f /  512.0f);
-		GLMakeTextureMesh(scTexArray[kSC2xNInter], kSCMeshX, kSCMeshY,             256.0f /  512.0f, 224.0f /  256.0f);
-		GLMakeTextureMesh(scTexArray[kSC2xEInter], kSCMeshX, kSCMeshY,             256.0f /  512.0f, 239.0f /  256.0f);
-		GLMakeTextureMesh(scTexArray[kSC3xNormal], kSCMeshX, kSCMeshY,             768.0f / 1024.0f, 672.0f / 1024.0f);
-		GLMakeTextureMesh(scTexArray[kSC3xExtend], kSCMeshX, kSCMeshY,             768.0f / 1024.0f, 717.0f / 1024.0f);
-		GLMakeTextureMesh(scTexArray[kSC3xNHiRes], kSCMeshX, kSCMeshY,             768.0f / 1024.0f, 672.0f / 2048.0f);
-		GLMakeTextureMesh(scTexArray[kSC3xEHiRes], kSCMeshX, kSCMeshY,             768.0f / 1024.0f, 717.0f / 2048.0f);
-		GLMakeTextureMesh(scTexArray[kSCNTNormal], kSCMeshX, kSCMeshY, (float) ntsc_width / 1024.0f, 224.0f /  256.0f);
-		GLMakeTextureMesh(scTexArray[kSCNTExtend], kSCMeshX, kSCMeshY, (float) ntsc_width / 1024.0f, 239.0f /  256.0f);
-
-		scScnArray = new GLfloat [(kSCMeshX + 1) * 2 * kSCMeshY * 3];
-		GLMakeScreenMesh(scScnArray, kSCMeshX, kSCMeshY);
-	}
-
-    CGLSetCurrentContext(s9xView.openGLContext.CGLContextObj);
-    glViewport(0, 0, glScreenW, glScreenH);
-
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-	for (int i = 0; i < 2; i++)
-	{
-        glClear(GL_COLOR_BUFFER_BIT);
-        //CGLFlushDrawable(s9xView.openGLContext.CGLContextObj);
-	}
-}
-
 static void S9xDeinitOpenGLContext (void)
 {
-	if (screencurvature)
-	{
-		delete [] scTexArray[kSC2xNormal];
-		delete [] scTexArray[kSC2xExtend];
-		delete [] scTexArray[kSC2xNHiRes];
-		delete [] scTexArray[kSC2xEHiRes];
-		delete [] scTexArray[kSC2xNInter];
-		delete [] scTexArray[kSC2xEInter];
-		delete [] scTexArray[kSC3xNormal];
-		delete [] scTexArray[kSC3xExtend];
-		delete [] scTexArray[kSC3xNHiRes];
-		delete [] scTexArray[kSC3xEHiRes];
-		delete [] scTexArray[kSCNTNormal];
-		delete [] scTexArray[kSCNTExtend];
-		delete [] scScnArray;
-
-		scTexArray[kSC2xNormal] = NULL;
-		scTexArray[kSC2xExtend] = NULL;
-		scTexArray[kSC2xNHiRes] = NULL;
-		scTexArray[kSC2xEHiRes] = NULL;
-		scTexArray[kSC2xNInter] = NULL;
-		scTexArray[kSC2xEInter] = NULL;
-		scTexArray[kSC3xNormal] = NULL;
-		scTexArray[kSC3xExtend] = NULL;
-		scTexArray[kSC3xNHiRes] = NULL;
-		scTexArray[kSC3xEHiRes] = NULL;
-		scTexArray[kSCNTNormal] = NULL;
-		scTexArray[kSCNTExtend] = NULL;
-		scScnArray              = NULL;
-	}
-
-	glDeleteTextures(kGLNumTextures, OpenGL.textures);
 }
 
 static void S9xInitCoreImage (void)
@@ -651,9 +398,6 @@ void GetGameDisplay (int *w, int *h)
 
 void S9xInitDisplay (int argc, char **argv)
 {
-	if (directDisplay)
-		return;
-
     glScreenBounds = s9xView.frame;
 
 	unlimitedCursor = CGPointMake(0.0f, 0.0f);
@@ -703,11 +447,8 @@ void S9xInitDisplay (int argc, char **argv)
 		S9xInitWindowMode();
 	}
 
-    S9xInitOpenGL();
+    S9xInitMetal();
 
-	S9xInitOpenGLContext();
-	if (ciFilterEnable)
-		S9xInitCoreImage();
 	if (drawingMethod == kDrawingBlitGL)
 		S9xInitBlitGL();
 
@@ -717,21 +458,14 @@ void S9xInitDisplay (int argc, char **argv)
 	windowResizeCount = 1;
 
 	gettimeofday(&bencht1, NULL);
-
-	directDisplay = true;
 }
 
 void S9xDeinitDisplay (void)
 {
-	if (!directDisplay)
-		return;
-
 	S9xSetSoundMute(true);
 
 	if (drawingMethod == kDrawingBlitGL)
 		S9xDeinitBlitGL();
-	if (ciFilterEnable)
-		S9xDeinitCoreImage();
 	S9xDeinitOpenGLContext();
 
 	if (fullscreen)
@@ -744,8 +478,6 @@ void S9xDeinitDisplay (void)
 	}
 
     S9xDeinitOpenGL();
-
-	directDisplay = false;
 }
 
 bool8 S9xInitUpdate (void)
@@ -755,12 +487,9 @@ bool8 S9xInitUpdate (void)
 
 bool8 S9xDeinitUpdate (int width, int height)
 {
-	if (directDisplay)
-        dispatch_async(dispatch_get_main_queue(),^{
-            [s9xView setNeedsDisplay:YES];
-        });
-
-	return (true);
+    dispatch_async(dispatch_get_main_queue(),^{
+        [s9xView setNeedsDisplay:YES];
+    });
 }
 
 bool8 S9xContinueUpdate (int width, int height)
@@ -868,7 +597,7 @@ void S9xPutImage (int width, int height)
 	switch (drawingMethod)
 	{
 		case kDrawingOpenGL:
-			S9xPutImageOpenGL(width, height);
+			S9xPutImageMetal(width, height);
 			break;
 
 		case kDrawingBlitGL:
@@ -877,7 +606,7 @@ void S9xPutImage (int width, int height)
 	}
 }
 
-static void S9xPutImageOpenGL (int width, int height)
+static void S9xPutImageMetal (int width, int height)
 {
 	int	orig_height = height;
 
@@ -900,30 +629,19 @@ static void S9xPutImageOpenGL (int width, int height)
 
 		int	vh = (height > 256) ? height : (height << 1);
 
-        CGLSetCurrentContext(s9xView.openGLContext.CGLContextObj);
-
         glViewport(0, 0, glScreenW, glScreenH);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
 		glPixelStorei(GL_UNPACK_ROW_LENGTH, width);
 
-		if (!ciFilterEnable)
-		{
-			textureNum = (width <= 256) ? ((height <= 256) ? kGL256256 : kGL256512) : ((height <= 256) ? kGL512256 : kGL512512);
-			OpenGL.vertex[textureNum][5] = OpenGL.vertex[textureNum][7] = OpenGL.rangeExt ? height : (vh / 512.0f);
-			glBindTexture(OpenGL.target, OpenGL.textures[textureNum]);
-		}
-		else
-		{
-			glMatrixMode(GL_PROJECTION);
-			glLoadIdentity();
-			glOrtho(0, width, orig_height - height, orig_height, -1, 1);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glOrtho(0, width, orig_height - height, orig_height, -1, 1);
 
-			if (cgGameImage)
-				CGImageRelease(cgGameImage);
-			cgGameImage = CreateGameScreenCGImage();
-		}
+        if (cgGameImage)
+            CGImageRelease(cgGameImage);
+        cgGameImage = CreateGameScreenCGImage();
 
 		imageWidth[0]  = width;
 		imageHeight[0] = height;

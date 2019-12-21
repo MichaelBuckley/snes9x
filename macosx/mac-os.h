@@ -23,6 +23,7 @@
 #define _mac_os_h_
 
 #import <Cocoa/Cocoa.h>
+#import <MetalKit/MetalKit.h>
 
 #import <os/lock.h>
 
@@ -102,15 +103,6 @@ typedef struct
 	SInt32		frequency;
 }	AutoFireState;
 
-typedef struct
-{
-	bool8		benchmark;
-	bool8		glForceNoTextureRectangle;
-	bool8		glUseClientStrageApple;
-	bool8		glUseTexturePriority;
-	int			glStorageHint;
-}	ExtraOption;
-
 #define kMacWindowHeight	(SNES_HEIGHT_EXTENDED)
 #define MAC_MAX_CHEATS      150
 
@@ -130,11 +122,8 @@ extern int				macFrameSkip;
 extern int32			skipFrames;
 extern int64			lastFrame;
 extern unsigned long	spcFileCount, pngFileCount;
-extern bool8			finished, cartOpen,
-						autofire, hidExist, directDisplay;
-extern bool8			fullscreen, autoRes,
-						glstretch, gl32bit, vsync, drawoverscan, lastoverscan, screencurvature,
-						ciFilterEnable;
+extern bool8			finished, cartOpen, autofire;
+extern bool8			fullscreen, autoRes, glstretch, gl32bit, vsync, drawoverscan, lastoverscan, screencurvature;
 extern long				drawingMethod;
 extern int				videoMode;
 extern SInt32			macSoundVolume;
@@ -167,7 +156,7 @@ extern bool8			pressedKeys[MAC_MAX_PLAYERS][kNumButtons];
 extern bool8            pressedGamepadButtons[MAC_MAX_PLAYERS][kNumButtons];
 extern pthread_mutex_t	keyLock;
 
-extern NSOpenGLView		*s9xView;
+extern MTKView			*s9xView;
 
 void AdjustMenus (void);
 void UpdateMenuCommandStatus (Boolean);

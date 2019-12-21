@@ -111,8 +111,6 @@ unsigned long		spcFileCount        = 0,
 bool8				finished            = false,
 					cartOpen            = false,
 					autofire            = false,
-					hidExist            = true,
-					directDisplay       = false;
 
 bool8				fullscreen          = false,
 					autoRes             = false,
@@ -121,7 +119,6 @@ bool8				fullscreen          = false,
 					vsync               = true,
 					drawoverscan        = false,
 					screencurvature     = false,
-					ciFilterEnable      = false;
 long				drawingMethod       = kDrawingOpenGL;
 int					videoMode           = VIDEOMODE_BLOCKY;
 
@@ -234,7 +231,7 @@ bool8               heldFunctionButtons[kNumFunctionButtons] = { 0 };
 pthread_mutex_t     keyLock;
 pthread_mutex_t     renderLock;
 
-NSOpenGLView        *s9xView;
+MTKView             *s9xView;
 
 enum
 {
@@ -1116,16 +1113,6 @@ static inline void EmulationLoop (void)
 //        menu = GetMenuRef(mControl);
 //        EnableMenuItem(menu, iKeyboardLayout);
 //        EnableMenuItem(menu, iAutoFire);
-//        if (hidExist)
-//        {
-//            EnableMenuItem(menu, iISpLayout);
-//            EnableMenuItem(menu, iISpPreset);
-//        }
-//        else
-//        {
-//            DisableMenuItem(menu, iISpLayout);
-//            DisableMenuItem(menu, iISpPreset);
-//        }
 //
 //        menu = GetMenuRef(mEmulation);
 //        str = CFCopyLocalizedString(CFSTR("RunMenu"), "run");
@@ -1736,12 +1723,6 @@ int PromptFreezeDefrost (Boolean freezing)
     const int           w = SNES_WIDTH << 1, h = SNES_HEIGHT << 1;
     const char          letters[] = "123456789ABC", *filename;
 
-    if (!directDisplay)
-    {
-        S9xInitDisplay(NULL, NULL);
-        SNES9X_Go();
-    }
-
     frzselecting = true;
     oldInactiveMode = inactiveMode;
     if (inactiveMode == 3)
@@ -2291,9 +2272,6 @@ static void ProcessInput (void)
                 CopyPressedKeys(keys, gamepadButtons);
 
             isok = SNES9X_Freeze();
-            pthread_mutex_lock(&renderLock);
-            ClearGFXScreen();
-            pthread_mutex_unlock(&renderLock);
             return;
         }
 
@@ -2304,9 +2282,6 @@ static void ProcessInput (void)
                 CopyPressedKeys(keys, gamepadButtons);
 
             isok = SNES9X_Defrost();
-            pthread_mutex_lock(&renderLock);
-            ClearGFXScreen();
-            pthread_mutex_unlock(&renderLock);
             return;
         }
 
@@ -2622,12 +2597,6 @@ static void Initialize (void)
 		windowSize[a].height = -1.0f;
 	}
 
-	extraOptions.benchmark = false;
-	extraOptions.glForceNoTextureRectangle = false;
-	extraOptions.glUseClientStrageApple = true;
-	extraOptions.glUseTexturePriority = false;
-	extraOptions.glStorageHint = 2;
-
 	npServerIP[0] = 0;
 	npName[0] = 0;
 
@@ -2725,95 +2694,90 @@ void S9xSyncSpeed (void)
 {
 	long long	currentFrame, adjustment;
 
-	if (directDisplay)
-	{
-		if (extraOptions.benchmark)
-			IPPU.RenderThisFrame = true;
-		else
-		{
-			if (Settings.SoundSync)
-			{
-				while (!S9xSyncSound())
-					usleep(0);
-			}
+    if (extraOptions.benchmark)
+        IPPU.RenderThisFrame = true;
+    else
+    {
+        if (Settings.SoundSync)
+        {
+            while (!S9xSyncSound())
+                usleep(0);
+        }
 
-			if (!macQTRecord)
-			{
-				if (macFrameSkip < 0)	// auto skip
-				{
-					skipFrames--;
+        if (!macQTRecord)
+        {
+            if (macFrameSkip < 0)	// auto skip
+            {
+                skipFrames--;
 
-					if (skipFrames <= 0)
-					{
-						adjustment = (Settings.TurboMode ? (macFrameAdvanceRate / macFastForwardRate) : macFrameAdvanceRate) / Memory.ROMFramesPerSecond;
+                if (skipFrames <= 0)
+                {
+                    adjustment = (Settings.TurboMode ? (macFrameAdvanceRate / macFastForwardRate) : macFrameAdvanceRate) / Memory.ROMFramesPerSecond;
+                    currentFrame = GetMicroseconds();
+
+                    skipFrames = (int32) ((currentFrame - lastFrame) / adjustment);
+                    lastFrame += frameCount * adjustment;
+
+                    if (skipFrames < 1)
+                        skipFrames = 1;
+                    else
+                    if (skipFrames > 7)
+                    {
+                        skipFrames = 7;
+                        lastFrame = GetMicroseconds();
+                    }
+
+                    frameCount = skipFrames;
+
+                    if (lastFrame > currentFrame)
+                        usleep((useconds_t) (lastFrame - currentFrame));
+
+                    IPPU.RenderThisFrame = true;
+                }
+                else
+                    IPPU.RenderThisFrame = false;
+            }
+            else					// constant
+            {
+                skipFrames--;
+
+                if (skipFrames <= 0)
+                {
+                    adjustment = macFrameAdvanceRate * macFrameSkip / Memory.ROMFramesPerSecond;
+                    currentFrame = GetMicroseconds();
+
+                    if (currentFrame - lastFrame < adjustment)
+                    {
+                        usleep((useconds_t) (adjustment + lastFrame - currentFrame));
                         currentFrame = GetMicroseconds();
+                    }
 
-						skipFrames = (int32) ((currentFrame - lastFrame) / adjustment);
-						lastFrame += frameCount * adjustment;
+                    lastFrame = currentFrame;
+                    skipFrames = macFrameSkip;
+                    if (Settings.TurboMode)
+                        skipFrames *= macFastForwardRate;
 
-						if (skipFrames < 1)
-							skipFrames = 1;
-						else
-						if (skipFrames > 7)
-						{
-							skipFrames = 7;
-                            lastFrame = GetMicroseconds();
-						}
+                    IPPU.RenderThisFrame = true;
+                }
+                else
+                    IPPU.RenderThisFrame = false;
+            }
+        }
+        else
+        {
+            //MacQTRecordFrame(IPPU.RenderedScreenWidth, IPPU.RenderedScreenHeight);
 
-						frameCount = skipFrames;
+            adjustment = macFrameAdvanceRate / Memory.ROMFramesPerSecond;
+            currentFrame = GetMicroseconds();
 
-						if (lastFrame > currentFrame)
-							usleep((useconds_t) (lastFrame - currentFrame));
+            if (currentFrame - lastFrame < adjustment)
+                usleep((useconds_t) (adjustment + lastFrame - currentFrame));
 
-						IPPU.RenderThisFrame = true;
-					}
-					else
-						IPPU.RenderThisFrame = false;
-				}
-				else					// constant
-				{
-					skipFrames--;
+            lastFrame = currentFrame;
 
-					if (skipFrames <= 0)
-					{
-						adjustment = macFrameAdvanceRate * macFrameSkip / Memory.ROMFramesPerSecond;
-                        currentFrame = GetMicroseconds();
-
-						if (currentFrame - lastFrame < adjustment)
-						{
-							usleep((useconds_t) (adjustment + lastFrame - currentFrame));
-                            currentFrame = GetMicroseconds();
-						}
-
-						lastFrame = currentFrame;
-						skipFrames = macFrameSkip;
-						if (Settings.TurboMode)
-							skipFrames *= macFastForwardRate;
-
-						IPPU.RenderThisFrame = true;
-					}
-					else
-						IPPU.RenderThisFrame = false;
-				}
-			}
-			else
-			{
-				//MacQTRecordFrame(IPPU.RenderedScreenWidth, IPPU.RenderedScreenHeight);
-
-				adjustment = macFrameAdvanceRate / Memory.ROMFramesPerSecond;
-				currentFrame = GetMicroseconds();
-
-				if (currentFrame - lastFrame < adjustment)
-					usleep((useconds_t) (adjustment + lastFrame - currentFrame));
-
-				lastFrame = currentFrame;
-
-				IPPU.RenderThisFrame = true;
-			}
-		}
-	}
-	else
-		IPPU.RenderThisFrame = false;
+            IPPU.RenderThisFrame = true;
+        }
+    }
 }
 
 void S9xAutoSaveSRAM (void)
@@ -2873,7 +2837,7 @@ void QuitWithFatalError ( NSString *message)
     [NSApp terminate:nil];
 }
 
-@interface S9xView : NSOpenGLView
+@interface S9xView : MTKView
 @end
 
 @implementation S9xView
@@ -2884,9 +2848,9 @@ void QuitWithFatalError ( NSString *message)
     renderLock = PTHREAD_MUTEX_INITIALIZER;
 }
 
-- (instancetype)initWithFrame:(NSRect)frameRect pixelFormat:(nullable NSOpenGLPixelFormat *)format
+- (instancetype)initWithFrame:(NSRect)frameRect
 {
-    self = [super initWithFrame:frameRect pixelFormat:format];
+    self = [super initWithFrame:frameRect];
 
     if (self)
     {
@@ -3056,7 +3020,7 @@ void QuitWithFatalError ( NSString *message)
         Initialize();
 
         CGRect frame = NSMakeRect(0, 0, SNES_WIDTH * 2, SNES_HEIGHT * 2);
-        s9xView = [[S9xView alloc] initWithFrame:frame pixelFormat:nil];
+        s9xView = [[S9xView alloc] initWithFrame:frame];
         s9xView.translatesAutoresizingMaskIntoConstraints = NO;
         s9xView.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
         [s9xView addConstraint:[NSLayoutConstraint constraintWithItem:s9xView attribute:NSLayoutAttributeHeight relatedBy:NSLayoutRelationEqual toItem:s9xView attribute:NSLayoutAttributeWidth multiplier:(CGFloat)SNES_HEIGHT/(CGFloat)SNES_WIDTH constant:0.0]];
@@ -3089,9 +3053,6 @@ void QuitWithFatalError ( NSString *message)
             skipFrames = macFrameSkip;
 
         S9xInitDisplay(NULL, NULL);
-        pthread_mutex_lock(&renderLock);
-        ClearGFXScreen();
-        pthread_mutex_unlock(&renderLock);
 
         [NSThread detachNewThreadWithBlock:^
         {
