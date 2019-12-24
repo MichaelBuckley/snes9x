@@ -45,13 +45,11 @@
 #import <pthread.h>
 
 #import "mac-prefix.h"
-#import "mac-appleevent.h"
 #import "mac-audio.h"
 #import "mac-cheat.h"
 #import "mac-cheatfinder.h"
 #import "mac-cocoatools.h"
 #import "mac-controls.h"
-#import "mac-coreimage.h"
 #import "mac-dialog.h"
 #import "mac-file.h"
 #import "mac-gworld.h"
@@ -60,7 +58,6 @@
 #import "mac-multicart.h"
 #import "mac-musicbox.h"
 #import "mac-netplay.h"
-#import "mac-prefs.h"
 #import "mac-render.h"
 #import "mac-screenshot.h"
 #import "mac-snes9x.h"
@@ -72,7 +69,6 @@
 volatile bool8		running             = false;
 volatile bool8		s9xthreadrunning    = false;
 
-volatile int		windowResizeCount   = 1;
 volatile bool8		windowExtend        = true;
 
 uint32				controlPad[MAC_MAX_PLAYERS];
@@ -86,8 +82,6 @@ WindowRef			gWindow             = NULL;
 uint32				glScreenW,
 					glScreenH;
 CGRect				glScreenBounds;
-Point				windowPos[kWindowCount];
-CGSize				windowSize[kWindowCount];
 
 CGImageRef			macIconImage[118];
 int					macPadIconIndex,
@@ -110,16 +104,14 @@ unsigned long		spcFileCount        = 0,
 
 bool8				finished            = false,
 					cartOpen            = false,
-					autofire            = false,
+					autofire            = false;
 
 bool8				fullscreen          = false,
 					autoRes             = false,
 					glstretch           = true,
 					gl32bit             = true,
 					vsync               = true,
-					drawoverscan        = false,
-					screencurvature     = false,
-long				drawingMethod       = kDrawingOpenGL;
+					drawoverscan        = false;
 int					videoMode           = VIDEOMODE_BLOCKY;
 
 SInt32				macSoundVolume      = 80;	// %
@@ -162,8 +154,6 @@ char				npServerIP[256],
 bool8				lastoverscan        = false;
 
 CGPoint				unlimitedCursor;
-
-ExtraOption			extraOptions;
 
 CFStringRef			multiCartPath[2];
 
@@ -2049,7 +2039,6 @@ int PromptFreezeDefrost (Boolean freezing)
 
         usleep(30000);
 
-        windowResizeCount = 2;
         UpdateFreezeDefrostScreen(current_selection, image, draw, ctx);
     } while (result == -2);
 
@@ -2065,8 +2054,6 @@ int PromptFreezeDefrost (Boolean freezing)
 
     inactiveMode = oldInactiveMode;
     frzselecting = false;
-
-    windowResizeCount = 2;
 
     return (result);
 }
@@ -2589,14 +2576,6 @@ static void Initialize (void)
     machTimeNumerator = info.numer;
     machTimeDenominator = info.denom * 1000;
 
-	for (int a = 0; a < kWindowCount; a++)
-	{
-		windowPos[a].h = 40;
-		windowPos[a].v = 80;
-		windowSize[a].width  = -1.0f;
-		windowSize[a].height = -1.0f;
-	}
-
 	npServerIP[0] = 0;
 	npName[0] = 0;
 
@@ -2604,12 +2583,9 @@ static void Initialize (void)
 
 	CreateIconImages();
 
-	InitAppleEvents();
 	InitKeyboard();
 	InitAutofire();
 	InitCheatFinder();
-
-	LoadPrefs();
 
 	InitGraphics();
 	InitMacSound();
@@ -2637,26 +2613,18 @@ static void Initialize (void)
 
 	S9xSetControllerCrosshair(X_MOUSE1, 0, NULL, NULL);
 	S9xSetControllerCrosshair(X_MOUSE2, 0, NULL, NULL);
-
-    InitCoreImage();
-    InitCoreImageFilter();
 }
 
 static void Deinitialize (void)
 {
-    DeinitCoreImageFilter();
-    DeinitCoreImage();
-
 	deviceSetting = deviceSettingMaster;
 
 	DeinitMultiCart();
-	SavePrefs();
 	ReleaseHID();
 	DeinitCheatFinder();
 	DeinitGraphics();
 	DeinitKeyboard();
 	DeinitMacSound();
-	DeinitAppleEvents();
 	ReleaseIconImages();
 
 	S9xGraphicsDeinit();
@@ -2694,90 +2662,85 @@ void S9xSyncSpeed (void)
 {
 	long long	currentFrame, adjustment;
 
-    if (extraOptions.benchmark)
-        IPPU.RenderThisFrame = true;
-    else
-    {
-        if (Settings.SoundSync)
-        {
-            while (!S9xSyncSound())
-                usleep(0);
-        }
+	if (Settings.SoundSync)
+	{
+		while (!S9xSyncSound())
+			usleep(0);
+	}
 
-        if (!macQTRecord)
-        {
-            if (macFrameSkip < 0)	// auto skip
-            {
-                skipFrames--;
+	if (!macQTRecord)
+	{
+		if (macFrameSkip < 0)	// auto skip
+		{
+			skipFrames--;
 
-                if (skipFrames <= 0)
-                {
-                    adjustment = (Settings.TurboMode ? (macFrameAdvanceRate / macFastForwardRate) : macFrameAdvanceRate) / Memory.ROMFramesPerSecond;
-                    currentFrame = GetMicroseconds();
+			if (skipFrames <= 0)
+			{
+				adjustment = (Settings.TurboMode ? (macFrameAdvanceRate / macFastForwardRate) : macFrameAdvanceRate) / Memory.ROMFramesPerSecond;
+				currentFrame = GetMicroseconds();
 
-                    skipFrames = (int32) ((currentFrame - lastFrame) / adjustment);
-                    lastFrame += frameCount * adjustment;
+				skipFrames = (int32) ((currentFrame - lastFrame) / adjustment);
+				lastFrame += frameCount * adjustment;
 
-                    if (skipFrames < 1)
-                        skipFrames = 1;
-                    else
-                    if (skipFrames > 7)
-                    {
-                        skipFrames = 7;
-                        lastFrame = GetMicroseconds();
-                    }
+				if (skipFrames < 1)
+					skipFrames = 1;
+				else
+				if (skipFrames > 7)
+				{
+					skipFrames = 7;
+					lastFrame = GetMicroseconds();
+				}
 
-                    frameCount = skipFrames;
+				frameCount = skipFrames;
 
-                    if (lastFrame > currentFrame)
-                        usleep((useconds_t) (lastFrame - currentFrame));
+				if (lastFrame > currentFrame)
+					usleep((useconds_t) (lastFrame - currentFrame));
 
-                    IPPU.RenderThisFrame = true;
-                }
-                else
-                    IPPU.RenderThisFrame = false;
-            }
-            else					// constant
-            {
-                skipFrames--;
+				IPPU.RenderThisFrame = true;
+			}
+			else
+				IPPU.RenderThisFrame = false;
+		}
+		else					// constant
+		{
+			skipFrames--;
 
-                if (skipFrames <= 0)
-                {
-                    adjustment = macFrameAdvanceRate * macFrameSkip / Memory.ROMFramesPerSecond;
-                    currentFrame = GetMicroseconds();
+			if (skipFrames <= 0)
+			{
+				adjustment = macFrameAdvanceRate * macFrameSkip / Memory.ROMFramesPerSecond;
+				currentFrame = GetMicroseconds();
 
-                    if (currentFrame - lastFrame < adjustment)
-                    {
-                        usleep((useconds_t) (adjustment + lastFrame - currentFrame));
-                        currentFrame = GetMicroseconds();
-                    }
+				if (currentFrame - lastFrame < adjustment)
+				{
+					usleep((useconds_t) (adjustment + lastFrame - currentFrame));
+					currentFrame = GetMicroseconds();
+				}
 
-                    lastFrame = currentFrame;
-                    skipFrames = macFrameSkip;
-                    if (Settings.TurboMode)
-                        skipFrames *= macFastForwardRate;
+				lastFrame = currentFrame;
+				skipFrames = macFrameSkip;
+				if (Settings.TurboMode)
+					skipFrames *= macFastForwardRate;
 
-                    IPPU.RenderThisFrame = true;
-                }
-                else
-                    IPPU.RenderThisFrame = false;
-            }
-        }
-        else
-        {
-            //MacQTRecordFrame(IPPU.RenderedScreenWidth, IPPU.RenderedScreenHeight);
+				IPPU.RenderThisFrame = true;
+			}
+			else
+				IPPU.RenderThisFrame = false;
+		}
+	}
+	else
+	{
+		//MacQTRecordFrame(IPPU.RenderedScreenWidth, IPPU.RenderedScreenHeight);
 
-            adjustment = macFrameAdvanceRate / Memory.ROMFramesPerSecond;
-            currentFrame = GetMicroseconds();
+		adjustment = macFrameAdvanceRate / Memory.ROMFramesPerSecond;
+		currentFrame = GetMicroseconds();
 
-            if (currentFrame - lastFrame < adjustment)
-                usleep((useconds_t) (adjustment + lastFrame - currentFrame));
+		if (currentFrame - lastFrame < adjustment)
+			usleep((useconds_t) (adjustment + lastFrame - currentFrame));
 
-            lastFrame = currentFrame;
+		lastFrame = currentFrame;
 
-            IPPU.RenderThisFrame = true;
-        }
-    }
+		IPPU.RenderThisFrame = true;
+	}
 }
 
 void S9xAutoSaveSRAM (void)
@@ -2989,7 +2952,6 @@ void QuitWithFatalError ( NSString *message)
 {
     if ( !NSEqualRects(frame, self.frame) )
     {
-        windowResizeCount = 2;
         [super setFrame:frame];
     }
 }

@@ -31,34 +31,6 @@
 
 enum
 {
-	kDrawingReserved1 = 1, // unused
-	kDrawingOpenGL,
-	kDrawingBlitGL
-};
-
-enum
-{
-	kWindowControllers = 0,
-	kWindowPreferences,
-	kWindowAbout,
-	kWindowAutoFire,
-	kWindowRomInfo,
-	kWindowCheatFinder,
-	kWindowKeyConfig,
-	kWindowCheatEntry,
-	kWindowScreen,
-	kWindowServer,
-	kWindowClient,
-	kWindowExtra,
-	kWindowSoundEffect,
-	kWindowCoreImageFilter,
-	kWindowMultiCart,
-
-	kWindowCount
-};
-
-enum
-{
 	SNES_MULTIPLAYER5,
 	SNES_MULTIPLAYER5_2,
 	SNES_JOYPAD,
@@ -108,14 +80,11 @@ typedef struct
 
 extern volatile bool8	running, s9xthreadrunning;
 extern volatile bool8	eventQueued, windowExtend;
-extern volatile int		windowResizeCount;
 extern uint32			controlPad[MAC_MAX_PLAYERS];
 extern uint8			romDetect, interleaveDetect, videoDetect, headerDetect;
 extern WindowRef		gWindow;
 extern uint32			glScreenW, glScreenH;
 extern CGRect			glScreenBounds;
-extern Point			windowPos[kWindowCount];
-extern CGSize			windowSize[kWindowCount];
 extern CGImageRef		macIconImage[118];
 extern int				macPadIconIndex, macLegendIconIndex, macMusicBoxIconIndex, macFunctionIconIndex;
 extern int				macFrameSkip;
@@ -123,7 +92,7 @@ extern int32			skipFrames;
 extern int64			lastFrame;
 extern unsigned long	spcFileCount, pngFileCount;
 extern bool8			finished, cartOpen, autofire;
-extern bool8			fullscreen, autoRes, glstretch, gl32bit, vsync, drawoverscan, lastoverscan, screencurvature;
+extern bool8			fullscreen, autoRes, glstretch, gl32bit, vsync, drawoverscan, lastoverscan;
 extern long				drawingMethod;
 extern int				videoMode;
 extern SInt32			macSoundVolume;
@@ -145,7 +114,6 @@ extern int				macControllerOption;
 extern CGPoint			unlimitedCursor;
 extern char				npServerIP[256], npName[256];
 extern AutoFireState	autofireRec[MAC_MAX_PLAYERS];
-extern ExtraOption		extraOptions;
 extern CFStringRef		multiCartPath[2];
 
 #ifdef MAC_PANTHER_SUPPORT
