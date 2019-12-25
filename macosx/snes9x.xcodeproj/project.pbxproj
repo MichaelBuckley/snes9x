@@ -59,6 +59,8 @@
 		3082C4272378BCE80081CA7C /* FakeResources.h in Headers */ = {isa = PBXBuildFile; fileRef = 3082C4222378BCE80081CA7C /* FakeResources.h */; };
 		3082C42A2379199F0081CA7C /* S9xApplication.m in Sources */ = {isa = PBXBuildFile; fileRef = 3082C4292379199F0081CA7C /* S9xApplication.m */; };
 		30A6F62423B2771A00630584 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30A6F62323B2771A00630584 /* MetalKit.framework */; };
+		30A6F62623B29EF500630584 /* shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 30A6F62523B29EF500630584 /* shaders.metal */; };
+		30A6F62823B29F8200630584 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30A6F62723B29F8200630584 /* Metal.framework */; };
 		30D15CF322CE6B5A005BC352 /* snes9x_framework.h in Headers */ = {isa = PBXBuildFile; fileRef = 30D15CF122CE6B5A005BC352 /* snes9x_framework.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		30D15CFC22CE6B74005BC352 /* sha256.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 85FEF90A20DDB18D00C038E9 /* sha256.cpp */; };
 		30D15CFE22CE6B74005BC352 /* bml.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 85FEF90620DDB15B00C038E9 /* bml.cpp */; };
@@ -284,6 +286,8 @@
 		3082C4282379199F0081CA7C /* S9xApplication.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = S9xApplication.h; sourceTree = "<group>"; };
 		3082C4292379199F0081CA7C /* S9xApplication.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = S9xApplication.m; sourceTree = "<group>"; };
 		30A6F62323B2771A00630584 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		30A6F62523B29EF500630584 /* shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = shaders.metal; sourceTree = "<group>"; };
+		30A6F62723B29F8200630584 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		30AD1D1E22FBB2EA000EE989 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		30AD1D1F22FBB2EA000EE989 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		30AD1D2022FBB2EA000EE989 /* en */ = {isa = PBXFileReference; lastKnownFileType = folder; name = en; path = "en.lproj/Snes9x Help"; sourceTree = "<group>"; };
@@ -535,6 +539,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				30A6F62823B29F8200630584 /* Metal.framework in Frameworks */,
 				30A6F62423B2771A00630584 /* MetalKit.framework in Frameworks */,
 				3042F7E3232E9BDD00C03F5E /* Carbon.framework in Frameworks */,
 				308092F92320B06F006A2860 /* Quartz.framework in Frameworks */,
@@ -608,6 +613,7 @@
 		3045A1EB22D03C420092B97D /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				30A6F62723B29F8200630584 /* Metal.framework */,
 				30A6F62323B2771A00630584 /* MetalKit.framework */,
 				3042F7E2232E9BDD00C03F5E /* Carbon.framework */,
 				3042F7E0232E9BD200C03F5E /* CoreServices.framework */,
@@ -969,6 +975,7 @@
 				EA3D2F580A26085800BDACCC /* libHIDUtilities_u.a */,
 				CF3E42491372D48F0077DE32 /* libz_u.a */,
 				30CCAD422290472E00549AED /* Info.plist */,
+				30A6F62523B29EF500630584 /* shaders.metal */,
 			);
 			path = macosx;
 			sourceTree = "<group>";
@@ -1237,6 +1244,7 @@
 				30D15D3522CE6B74005BC352 /* cpuexec.cpp in Sources */,
 				30D15D3622CE6B74005BC352 /* cpuops.cpp in Sources */,
 				30D15D3722CE6B74005BC352 /* crosshairs.cpp in Sources */,
+				30A6F62623B29EF500630584 /* shaders.metal in Sources */,
 				30D15D3822CE6B74005BC352 /* debug.cpp in Sources */,
 				30D15D3922CE6B74005BC352 /* dma.cpp in Sources */,
 				307C861222D27C53001B879E /* tileimpl-n1x1.cpp in Sources */,
