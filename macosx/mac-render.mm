@@ -306,11 +306,11 @@ void S9xPutImage (int width, int height)
 		unsigned int red = (pixel & FIRST_COLOR_MASK_RGB555) >> 10;
 		unsigned int green = (pixel & SECOND_COLOR_MASK_RGB555) >> 5;
 		unsigned int blue = (pixel & THIRD_COLOR_MASK_RGB555);
-				
-		red = (uint8)((((double)red) / 31.0) * 255.0);
-		green = (uint8)((((double)green) / 31.0) * 255.0);
-		blue = (uint8)((((double)blue) / 31.0) * 255.0);
 		
+		red = ( red * 527 + 23 ) >> 6;
+		green = ( green * 527 + 23 ) >> 6;
+		blue = ( blue * 527 + 23 ) >> 6;
+				
 		int offset = i * 4;
 		buffer[offset++] = (uint8)red;
 		buffer[offset++] = (uint8)green;
